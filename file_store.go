@@ -1,7 +1,6 @@
 package uploader
 
 import (
-	"errors"
 	"io"
 	"os"
 	"path"
@@ -34,13 +33,7 @@ func (d *DirectoryFileStore) Put(key string, r io.Reader) error {
 }
 
 func (d *DirectoryFileStore) Get(key string) (io.ReadCloser, error) {
-	file, err := os.Open(path.Join(d.prefix, key))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, notFoundError
-	} else if err != nil {
-		return nil, err
-	}
-	return file, nil
+	return os.Open(path.Join(d.prefix, key))
 }
 
 func (d *DirectoryFileStore) Close() error {

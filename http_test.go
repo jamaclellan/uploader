@@ -11,25 +11,28 @@ import (
 	"os"
 	"testing"
 
+	"uploader/internal/auth"
+	"uploader/internal/http_responses"
+
 	"github.com/google/go-cmp/cmp"
 )
 
 func TestUploaderIntegrationUpload(t *testing.T) {
-	tempdir := t.TempDir()
-	tempfile, err := os.CreateTemp(tempdir, "db")
+	tempDir := t.TempDir()
+	tempFile, err := os.CreateTemp(tempDir, "db")
 	if err != nil {
 		t.Fatal("failed to create temp db file")
 	}
-	tempfile.Close()
-	os.Remove(tempfile.Name())
-	meta, err := NewBoltStore(tempfile.Name())
+	tempFile.Close()
+	os.Remove(tempFile.Name())
+	meta, err := NewBoltStore(tempFile.Name())
 	if err != nil {
 		t.Fatalf("recieved error creating meta store %s", err)
 	}
 	defer meta.Close()
-	store := NewDirectoryFileStore(tempdir)
+	store := NewDirectoryFileStore(tempDir)
 
-	uploader := NewUploader("http://localhost/", meta, store)
+	uploader := NewUploaderHTTP("http://localhost/", meta, store)
 	user, err := meta.UserRegister("test_user")
 	if err != nil {
 		t.Fatalf("failed to register test user")
@@ -65,21 +68,22 @@ func uploadRequest(t testing.TB, token string) *http.Request {
 
 	request := httptest.NewRequest("POST", "/files", body)
 	request.Header.Set("Content-Type", contentType)
-	request.Header.Set(AuthHeader, fmt.Sprintf("Bearer %s", token))
+	request.Header.Set(auth.HTTPHeaderName, fmt.Sprintf("Bearer %s", token))
 	return request
 }
 
-func TestUploaderUploadFileFull(t *testing.T) {
-	meta := NewSpyMeta()
+func TestUploaderUploadFileHTTP(t *testing.T) {
+	meta := newTestMeta()
 	valid, _ := meta.UserRegister("test_user")
-	store := &SpyStore{}
-	uploader := NewUploader("http://localhost/", meta, store)
+	store := newMemoryFileStore()
+	uploader := NewUploaderHTTP("http://localhost/", meta, store)
 
 	request := uploadRequest(t, valid.AuthToken)
 	response := httptest.NewRecorder()
 
 	uploader.ServeHTTP(response, request)
 
+	// HTTP Stuff
 	assertStatusCode(t, response, http.StatusAccepted)
 	assertJSONResponse(t, response)
 	decoded, err := decodeUploadResponse(response)
@@ -87,6 +91,8 @@ func TestUploaderUploadFileFull(t *testing.T) {
 		t.Fatalf("failed to decode response %s", err)
 	}
 	assertJSONNoErrors(t, decoded.ResponseHeader)
+
+	// Actual behavior
 	result := decoded.Results
 	want := "http://localhost/files/1"
 	if result.URL != want {
@@ -98,41 +104,11 @@ func TestUploaderUploadFileFull(t *testing.T) {
 	}
 }
 
-func TestHandleUpload(t *testing.T) {
-	meta := NewSpyMeta()
-	store := &SpyStore{}
-	uploader := NewUploader("http://localhost/", meta, store)
-
-	fileName := "./test/data/test_file.txt"
-	stats, err := os.Stat(fileName)
-	file, err := os.Open(fileName)
-
-	result, err := uploader.HandleUpload(file, stats.Name(), stats.Size(), "test_user")
-	if err != nil {
-		t.Fatalf("did not expect error, but received %s", err)
-	}
-	if meta.keyCalls != 1 {
-		t.Errorf("unexpected number of calls for file key, expected %d got %d", 1, meta.keyCalls)
-	}
-	if meta.deleteCalls != 1 {
-		t.Errorf("unexpected number of calls for delete key, expected %d got %d", 1, meta.deleteCalls)
-	}
-	if len(meta.putCalls) != 1 {
-		t.Errorf("unexpected number of calls for putting file metadata, expected %d got %d", 1, len(meta.putCalls))
-	}
-	if len(store.putCalls) != 1 {
-		t.Errorf("unexpected number of calls for putting file in store, expected %d got %d", 1, len(store.putCalls))
-	}
-	if result.Key != "1" {
-		t.Errorf("expected file key of 1, got %s", result.Key)
-	}
-}
-
-func TestGetFile(t *testing.T) {
-	meta := NewSpyMeta()
+func TestFileGetHTTP(t *testing.T) {
+	meta := newTestMeta()
 	meta.addFile("1", "text/plain")
-	store := &SpyStore{}
-	uploader := NewUploader("http://localhost/", meta, store)
+	store := newMemoryFileStore()
+	uploader := NewUploaderHTTP("http://localhost/", meta, store)
 
 	request := httptest.NewRequest(http.MethodGet, "/files/1", nil)
 	response := httptest.NewRecorder()
@@ -140,12 +116,6 @@ func TestGetFile(t *testing.T) {
 	uploader.ServeHTTP(response, request)
 
 	assertStatusCode(t, response, http.StatusOK)
-	if diff := cmp.Diff(meta.getCalls, []string{"1"}); diff != "" {
-		t.Errorf("expected meta get calls to match. %s", diff)
-	}
-	if diff := cmp.Diff(store.getCalls, []string{"1"}); diff != "" {
-		t.Errorf("expected store get calls to match. %s", diff)
-	}
 	if diff := cmp.Diff(response.Body.Bytes(), []byte("Hello, World!")); diff != "" {
 		t.Errorf("response body did not return expected result. %s", diff)
 	}
@@ -159,7 +129,7 @@ func decodeUploadResponse(response *httptest.ResponseRecorder) (*UploadResponse,
 	return uploadResponse, nil
 }
 
-func assertJSONNoErrors(t testing.TB, header ResponseHeader) {
+func assertJSONNoErrors(t testing.TB, header http_responses.ResponseHeader) {
 	t.Helper()
 	if header.Ok != true {
 		t.Error("expected okay status in response header")

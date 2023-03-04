@@ -6,18 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 
+	"uploader/internal/auth"
+
 	"go.etcd.io/bbolt"
 )
 
-type FileInfo struct {
-	Key      string
-	Filename string
-	Size     int64
-	User     string
-}
-
 type MetaStore interface {
-	Close()
+	Close() error
+
+	auth.Store
 
 	// FileKey returns the key of a newly created file instance.
 	// A file key is guaranteed to be unique and valid within the store at the time it is returned.
@@ -27,25 +24,24 @@ type MetaStore interface {
 	// a securely random key.
 	DeleteKey() (string, error)
 
-	UserRegister(string) (*User, error)
-	UserGetAuth(string) (*User, error)
-
-	FilePut(details UploadDetails) error
-	FileGet(key string) (*UploadDetails, error)
+	UploadMeta
 }
 
 type BoltStore struct {
 	db *bbolt.DB
 }
 
+const (
+	bucketAuth        = "auth"
+	bucketUsers       = "user"
+	bucketUserUploads = "user_upload"
+	bucketUpload      = "upload"
+)
+
 var (
-	authBucket       = []byte("auth")
-	userBucket       = []byte("user")
-	userUploadBucket = []byte("user_upload")
-	uploadBucket     = []byte("upload")
-	bucketList       = [][]byte{authBucket, userBucket, userUploadBucket, uploadBucket}
-	duplicateError   = errors.New("duplicate key")
-	notFoundError    = errors.New("key not found")
+	bucketList     = []string{bucketAuth, bucketUsers, bucketUserUploads, bucketUpload}
+	duplicateError = errors.New("duplicate key")
+	notFoundError  = errors.New("key not found")
 )
 
 func NewBoltStore(path string) (*BoltStore, error) {
@@ -55,7 +51,7 @@ func NewBoltStore(path string) (*BoltStore, error) {
 	}
 	if err = db.Update(func(tx *bbolt.Tx) error {
 		for _, bucket := range bucketList {
-			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
+			if _, err := tx.CreateBucketIfNotExists([]byte(bucket)); err != nil {
 				return err
 			}
 		}
@@ -66,8 +62,8 @@ func NewBoltStore(path string) (*BoltStore, error) {
 	return &BoltStore{db}, nil
 }
 
-func (b *BoltStore) Close() {
-	b.db.Close()
+func (b *BoltStore) Close() error {
+	return b.db.Close()
 }
 
 // FileKey returns a validated unique key that has been reserved within the bolt datastore.
@@ -81,7 +77,7 @@ func (b *BoltStore) FileKey() (string, error) {
 	}
 	for {
 		err := b.db.Update(func(tx *bbolt.Tx) error {
-			b := tx.Bucket(uploadBucket)
+			b := tx.Bucket([]byte(bucketUpload))
 			result := b.Get([]byte(key))
 			if result != nil {
 				return duplicateError
@@ -111,52 +107,62 @@ func rand64b() (string, error) {
 	return "", errors.New("failed to generate random key")
 }
 
-func (b *BoltStore) UserGetAuth(token string) (*User, error) {
-	var user *User
-	err := b.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(authBucket)
-		userBytes := b.Get([]byte(token))
-		if userBytes == nil {
+func (b *BoltStore) getJson(bucket, key string, target any) error {
+	return b.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		v := b.Get([]byte(key))
+		if v == nil {
 			return notFoundError
 		}
-		user = &User{}
-		return json.Unmarshal(userBytes, user)
+		return json.Unmarshal(v, target)
 	})
-	return user, err
+}
+
+func (b *BoltStore) putJson(bucket, key string, value any) error {
+	return b.db.Update(func(tx *bbolt.Tx) error {
+		uploadValue, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		b := tx.Bucket([]byte(bucket))
+		return b.Put([]byte(key), uploadValue)
+	})
+}
+
+func (b *BoltStore) putJsonNoDupe(bucket, key string, value any) error {
+	return b.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if v := b.Get([]byte(key)); v != nil {
+			return duplicateError
+		}
+		uploadValue, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(key), uploadValue)
+	})
 }
 
 func (b *BoltStore) FilePut(upload UploadDetails) error {
-	return b.db.Update(func(tx *bbolt.Tx) error {
-		uploadValue, err := json.Marshal(upload)
-		if err != nil {
-			return err
-		}
-		b := tx.Bucket(uploadBucket)
-		return b.Put([]byte(upload.Key), uploadValue)
-	})
+	return b.putJson(bucketUpload, upload.Key, upload)
 }
 
 func (b *BoltStore) FileGet(key string) (*UploadDetails, error) {
-	return nil, notFoundError
+	upload := &UploadDetails{}
+	return upload, b.getJson(bucketUpload, key, upload)
 }
 
-func (b *BoltStore) UserRegister(name string) (*User, error) {
-	auth, err := rand64b()
+func (b *BoltStore) UserByAuthToken(token string) (*auth.User, error) {
+	user := &auth.User{}
+	err := b.getJson(bucketAuth, token, user)
+	return user, err
+}
+
+func (b *BoltStore) UserRegister(name string) (*auth.User, error) {
+	token, err := rand64b()
 	if err != nil {
 		return nil, err
 	}
-	user := &User{AuthToken: auth, Name: name}
-	err = b.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(authBucket)
-		found := b.Get([]byte(auth))
-		if found != nil {
-			return duplicateError
-		}
-		value, err := json.Marshal(user)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(auth), value)
-	})
-	return user, err
+	user := &auth.User{AuthToken: token, Name: name}
+	return user, b.putJsonNoDupe(bucketAuth, user.AuthToken, user)
 }

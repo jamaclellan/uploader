@@ -3,6 +3,8 @@ package uploader
 import (
 	"fmt"
 	"net/url"
+
+	"uploader/internal/http_responses"
 )
 
 type UploadResponseBody struct {
@@ -13,7 +15,7 @@ type UploadResponseBody struct {
 }
 
 type UploadResponse struct {
-	ResponseHeader
+	http_responses.ResponseHeader
 	Results UploadResponseBody `json:"results"`
 }
 

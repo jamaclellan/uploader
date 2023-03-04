@@ -1,4 +1,4 @@
-package uploader
+package auth
 
 import (
 	"fmt"
@@ -12,9 +12,7 @@ type authSpy struct {
 }
 
 func (a *authSpy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if user, ok := r.Context().Value(AuthContextKey).(*User); ok {
-		a.user = user
-	}
+	a.user = AuthUser(r.Context())
 	w.WriteHeader(200)
 }
 
@@ -25,8 +23,8 @@ type authTest struct {
 }
 
 func TestBearerAuth(t *testing.T) {
-	spy := NewSpyMeta()
-	valid, _ := spy.UserRegister("test_user")
+	store := NewMemoryAuthStore()
+	valid, _ := store.UserRegister("test_user")
 	tests := map[string]authTest{
 		"valid case": {
 			auth:     fmt.Sprintf("Bearer %s", valid.AuthToken),
@@ -47,15 +45,22 @@ func TestBearerAuth(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			authSpy := &authSpy{}
-			a := BearerAuth(spy)
+			a := BearerAuth(store)
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
-			request.Header.Set(AuthHeader, test.auth)
+			request.Header.Set(HTTPHeaderName, test.auth)
 
 			handler := a(authSpy)
 			handler.ServeHTTP(recorder, request)
 			if recorder.Code != test.status {
 				t.Errorf("incorrect http status, want %d got %d", test.status, recorder.Code)
+			}
+			if test.username != "" {
+				if authSpy.user == nil {
+					t.Error("expected user to be found, but was not")
+				} else if authSpy.user.Name != test.username {
+					t.Errorf("expected user to be %s but found %s", test.username, authSpy.user.Name)
+				}
 			}
 		})
 	}
