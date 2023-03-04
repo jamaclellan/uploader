@@ -1,6 +1,10 @@
 package uploader
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+)
 
 type Uploader struct {
 	http.Handler
@@ -13,8 +17,9 @@ func (u *Uploader) uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 func NewUploader() *Uploader {
 	u := &Uploader{}
-	router := http.NewServeMux()
-	router.Handle("/upload/", http.HandlerFunc(u.uploadHandler))
+	router := chi.NewRouter()
+	//router.Use(middleware.Logger)
+	router.Post("/uploads/{user}", u.uploadHandler)
 
 	u.Handler = router
 

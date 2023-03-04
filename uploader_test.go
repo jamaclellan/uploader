@@ -19,7 +19,7 @@ func TestUploaderUploadFile(t *testing.T) {
 		t.Fatalf("failed to create upload body: %s", err)
 	}
 
-	request := httptest.NewRequest("POST", "/upload/test_user", body)
+	request := httptest.NewRequest("POST", "/uploads/test_user", body)
 	request.Header.Set("Content-Type", contentType)
 	response := httptest.NewRecorder()
 
