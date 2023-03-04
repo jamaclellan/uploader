@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -18,6 +19,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 )
+
+var baseURL = &url.URL{
+	Scheme: "http",
+	Host:   "localhost",
+	Path:   "/",
+}
 
 func TestUploaderIntegrationUpload(t *testing.T) {
 	tempDir := t.TempDir()
@@ -34,7 +41,7 @@ func TestUploaderIntegrationUpload(t *testing.T) {
 	defer meta.Close()
 	store := NewDirectoryFileStore(tempDir)
 
-	uploader := NewUploaderHTTP("http://localhost/", meta, store)
+	uploader := NewUploaderHTTP(baseURL, meta, store)
 	user, err := meta.UserRegister("test_user")
 	if err != nil {
 		t.Fatalf("failed to register test user")
@@ -78,7 +85,7 @@ func TestUploaderUploadFileHTTP(t *testing.T) {
 	meta := newTestMeta()
 	valid, _ := meta.UserRegister("test_user")
 	store := newMemoryFileStore()
-	uploader := NewUploaderHTTP("http://localhost/", meta, store)
+	uploader := NewUploaderHTTP(baseURL, meta, store)
 
 	request := uploadRequest(t, valid.AuthToken)
 	response := httptest.NewRecorder()
@@ -100,7 +107,7 @@ func TestUploaderUploadFileHTTP(t *testing.T) {
 	if result.URL != want {
 		t.Errorf("incorrect file url returned, got %s want %s", result.URL, want)
 	}
-	want = "http://localhost/uploads/test_user/1/delete"
+	want = "http://localhost/uploads/test_user/1/delete/delete"
 	if result.DeleteURL != want {
 		t.Errorf("incorrect delete url returned, got %s want %s", result.DeleteURL, want)
 	}
@@ -115,7 +122,7 @@ func TestFileGetHTTP(t *testing.T) {
 	store := newMemoryFileStore()
 	store.Put(fileKey, strings.NewReader(contents))
 
-	uploader := NewUploaderHTTP("http://localhost/", meta, store)
+	uploader := NewUploaderHTTP(baseURL, meta, store)
 
 	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/files/%s", fileKey), nil)
 	response := httptest.NewRecorder()
@@ -142,7 +149,7 @@ func TestFileDeleteHTTP(t *testing.T) {
 		store := newMemoryFileStore()
 		store.Put(fileKey, strings.NewReader(contents))
 
-		uploader := NewUploaderHTTP("http://localhost/", meta, store)
+		uploader := NewUploaderHTTP(baseURL, meta, store)
 
 		request := httptest.NewRequest(http.MethodDelete, "http://localhost/uploads/test_user/1", nil)
 		request.Header.Set(auth.HTTPHeaderName, fmt.Sprintf("Bearer %s", user.AuthToken))
@@ -167,7 +174,7 @@ func TestFileDeleteHTTP(t *testing.T) {
 		store := newMemoryFileStore()
 		store.Put(fileKey, strings.NewReader(contents))
 
-		uploader := NewUploaderHTTP("http://localhost/", meta, store)
+		uploader := NewUploaderHTTP(baseURL, meta, store)
 
 		// Test files have a fixed delete key of "delete"
 		request := httptest.NewRequest(http.MethodGet, "http://localhost/uploads/test_user/1/delete/delete", nil)

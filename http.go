@@ -1,21 +1,24 @@
 package uploader
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 
 	"uploader/internal/auth"
 	"uploader/internal/responses"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type Uploader struct {
 	http.Handler
-	baseURL string
+	baseURL *url.URL
 	Auth    auth.Store
 	us      UploadService
 }
@@ -92,10 +95,11 @@ func (u *Uploader) uploadDelete(w http.ResponseWriter, r *http.Request) {
 	responses.Json(w, response, 200)
 }
 
-func NewUploaderHTTP(base string, meta MetaStore, store FileStore) *Uploader {
+func NewUploaderHTTP(base *url.URL, meta MetaStore, store FileStore) *Uploader {
+
 	u := &Uploader{baseURL: base, us: NewUploadService(meta, store), Auth: meta}
 	router := chi.NewRouter()
-	//router.Use(middleware.Logger)
+	router.Use(middleware.Logger)
 
 	router.Get("/files/{key}", u.fileGet)
 	router.Get("/files/{key}/{name}", u.fileGet)
@@ -116,6 +120,9 @@ func NewUploaderFromConfig(cfg *Config) (*Uploader, error) {
 	var store FileStore
 	var meta MetaStore
 	var err error
+	if cfg.BaseURL == "" {
+		return nil, errors.New("must have a base public url specified")
+	}
 	if cfg.BoltConfig != nil {
 		bc := cfg.BoltConfig
 		meta, err = NewBoltStore(bc.Path)
@@ -130,7 +137,50 @@ func NewUploaderFromConfig(cfg *Config) (*Uploader, error) {
 	if store == nil || meta == nil {
 		return nil, errors.New("must have a file store and meta storage configured")
 	}
-	return NewUploaderHTTP(cfg.BaseURL, meta, store), nil
+	base, err := url.Parse(cfg.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	return NewUploaderHTTP(base, meta, store), nil
+}
+
+type UploadScript struct {
+	Version         string `json:"Version"`
+	Name            string `json:"Name"`
+	DestinationType string `json:"DestinationType"`
+	RequestMethod   string `json:"RequestMethod"`
+	RequestURL      string `json:"RequestURL"`
+	Headers         struct {
+		Authorization string `json:"Authorization"`
+	} `json:"Headers"`
+	Body         string `json:"Body"`
+	FileFormName string `json:"FileFormName"`
+	URL          string `json:"URL"`
+	DeletionURL  string `json:"DeletionURL"`
+}
+
+func (u *Uploader) UploadScript(user *auth.User) string {
+	url := u.baseURL.JoinPath("/uploads/", user.Name)
+	script, err := json.Marshal(UploadScript{
+		Version:         "13.2.1",
+		Name:            "Uploader",
+		DestinationType: "ImageUploader, TextUploader, FileUploader",
+		RequestMethod:   "POST",
+		RequestURL:      url.String(),
+		Headers: struct {
+			Authorization string `json:"Authorization"`
+		}{
+			fmt.Sprintf("Bearer %s", user.AuthToken),
+		},
+		Body:         "MultipartFormData",
+		FileFormName: "file",
+		URL:          "$json:results.url$",
+		DeletionURL:  "$json:results.delete_url$",
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(script)
 }
 
 func (u *Uploader) Close() {

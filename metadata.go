@@ -94,11 +94,21 @@ func (b *BoltStore) FileKey() (string, error) {
 }
 
 func (b *BoltStore) DeleteKey() (string, error) {
-	return rand64b()
+	return randSecKey()
 }
 
 func rand64b() (string, error) {
 	target := make([]byte, 8)
+	for i := 0; i < 32; i++ {
+		if _, err := rand.Read(target); err == nil {
+			return base64.URLEncoding.EncodeToString(target), nil
+		}
+	}
+	return "", errors.New("failed to generate random key")
+}
+
+func randSecKey() (string, error) {
+	target := make([]byte, 32)
 	for i := 0; i < 32; i++ {
 		if _, err := rand.Read(target); err == nil {
 			return base64.URLEncoding.EncodeToString(target), nil
@@ -163,7 +173,7 @@ func (b *BoltStore) UserByAuthToken(token string) (*auth.User, error) {
 }
 
 func (b *BoltStore) UserRegister(name string) (*auth.User, error) {
-	token, err := rand64b()
+	token, err := randSecKey()
 	if err != nil {
 		return nil, err
 	}

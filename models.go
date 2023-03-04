@@ -1,7 +1,6 @@
 package uploader
 
 import (
-	"fmt"
 	"net/url"
 
 	"uploader/internal/responses"
@@ -37,9 +36,9 @@ type UploadDetails struct {
 	deleteUrl string
 }
 
-func (u *UploadDetails) BuildUrl(base string) {
-	target, _ := url.JoinPath(base, fmt.Sprintf("/files/%s", u.Key))
-	u.url = target
-	target, _ = url.JoinPath(base, fmt.Sprintf("/uploads/%s/%s/%s", u.User, u.Key, u.DeleteKey))
-	u.deleteUrl = target
+func (u *UploadDetails) BuildUrl(base *url.URL) {
+	target := base.JoinPath("/files/", u.Key)
+	u.url = target.String()
+	target = base.JoinPath("/uploads/", u.User, u.Key, "delete", u.DeleteKey)
+	u.deleteUrl = target.String()
 }

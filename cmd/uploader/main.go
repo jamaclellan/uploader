@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	configPath   = flag.String("cfg", "uploader.yaml", "Uploader config path.")
+	configPath   = flag.String("cfg", "./uploader.yaml", "Uploader config path.")
 	registerName = flag.String("register", "", "Username to register.")
 	host         = flag.String("addr", "[::1]", "Address to listen on.")
 	port         = flag.Int("port", 8080, "Port to listen on.")
@@ -72,6 +72,5 @@ func registerUser(cfg *uploader.Config, name string) {
 	if err != nil {
 		log.Fatalf("Failed to register user: %s", err)
 	}
-	log.Printf("%+v", user)
-	//log.Println(up.UploadScript(user))
+	log.Println(up.UploadScript(user))
 }
