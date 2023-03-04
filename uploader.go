@@ -3,10 +3,12 @@ package uploader
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type Uploader struct {
@@ -83,7 +85,7 @@ func (u *Uploader) HandleUpload(file io.ReadSeekCloser, fileName string, fileSiz
 func (u *Uploader) fileGet(w http.ResponseWriter, r *http.Request) {
 	response := &BaseResponse{}
 	key := chi.URLParam(r, "key")
-	//name := chi.URLParam(r, "name")
+	name := chi.URLParam(r, "name")
 
 	meta, err := u.Meta.FileGet(key)
 	if errors.Is(err, notFoundError) {
@@ -93,7 +95,12 @@ func (u *Uploader) fileGet(w http.ResponseWriter, r *http.Request) {
 		errorResponseFromError(w, response, err)
 		return
 	}
+
+	if name != "" && meta.Filename != "" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", meta.Filename))
+	}
 	w.Header().Set("Content-Type", meta.ContentType)
+
 	file, err := u.Store.Get(key)
 	if errors.Is(err, notFoundError) {
 		errorResponse(w, response, 404, -1004, "file not found")
@@ -103,6 +110,8 @@ func (u *Uploader) fileGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+
+	// Send file contents
 	if _, err := io.Copy(w, file); err != nil {
 		// Will this work? Haven't we already written too much?
 		errorResponse(w, response, 500, -5000, "unknown error")
@@ -113,7 +122,7 @@ func (u *Uploader) fileGet(w http.ResponseWriter, r *http.Request) {
 func NewUploader(base string, meta MetaStore, store FileStore) *Uploader {
 	u := &Uploader{baseURL: base, Meta: meta, Store: store}
 	router := chi.NewRouter()
-	//router.Use(middleware.Logger)
+	router.Use(middleware.Logger)
 	router.Get("/files/{key}", u.fileGet)
 	// This intentionally has a slash after it, as blobs can be fetched with a fake filename to force an attachment.
 	router.Get("/files/{key}/{name}", u.fileGet)
@@ -127,4 +136,30 @@ func NewUploader(base string, meta MetaStore, store FileStore) *Uploader {
 	u.Handler = router
 
 	return u
+}
+
+func NewUploaderFromConfig(cfg *Config) (*Uploader, error) {
+	var store FileStore
+	var meta MetaStore
+	var err error
+	if cfg.BoltConfig != nil {
+		bc := cfg.BoltConfig
+		meta, err = NewBoltStore(bc.Path)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if cfg.DirConfig != nil {
+		dc := cfg.DirConfig
+		store = NewDirectoryFileStore(dc.Path)
+	}
+	if store == nil || meta == nil {
+		return nil, errors.New("must have a file store and meta storage configured")
+	}
+	return NewUploader(cfg.BaseURL, meta, store), nil
+}
+
+func (u *Uploader) Close() {
+	u.Meta.Close()
+	u.Store.Close()
 }

@@ -8,6 +8,7 @@ import (
 )
 
 type FileStore interface {
+	Close() error
 	Put(key string, file io.Reader) error
 	Get(key string) (io.ReadCloser, error)
 }
@@ -40,4 +41,8 @@ func (d *DirectoryFileStore) Get(key string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return file, nil
+}
+
+func (d *DirectoryFileStore) Close() error {
+	return nil
 }

@@ -28,3 +28,7 @@ func (s *SpyStore) Get(key string) (io.ReadCloser, error) {
 	b := bufferCloser{bytes.NewBufferString("Hello, World!")}
 	return b, nil
 }
+
+func (s *SpyStore) Close() error {
+	return nil
+}
