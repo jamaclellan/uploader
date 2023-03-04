@@ -104,8 +104,6 @@ func NewUploaderHTTP(base *url.URL, meta MetaStore, store FileStore) *Uploader {
 	router.Get("/files/{key}", u.fileGet)
 	router.Get("/files/{key}/{name}", u.fileGet)
 
-	// Authenticated get uploads for user
-	//router.Get("/uploads/{user}", u.listHandler)
 	router.With(auth.BearerAuth(meta)).Post("/uploads/{user}", u.uploadHandler)
 	router.With(auth.BearerAuth(meta)).Delete("/uploads/{user}/{key}", u.uploadDelete)
 	// The below route is required for ShareX, as it does not make explicit DELETE requests.
