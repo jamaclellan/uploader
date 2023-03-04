@@ -65,3 +65,23 @@ func TestUploadService_Get(t *testing.T) {
 		}
 	})
 }
+
+func TestUploadService_Delete(t *testing.T) {
+	meta := newTestMeta()
+	store := newMemoryFileStore()
+	uploader := NewUploadService(meta, store)
+
+	meta.addFile("abc", "text/plain")
+	store.Put("abc", strings.NewReader("Hello, World!"))
+
+	err := uploader.Delete("abc")
+	if err != nil {
+		t.Fatalf("unexpected error on deletion %s", err)
+	}
+	if _, err = meta.FileGet("abc"); !errors.Is(err, ErrNotFound) {
+		t.Error("expected meta entry to be missing")
+	}
+	if _, err = store.Get("abc"); !errors.Is(err, os.ErrNotExist) {
+		t.Error("expected store entry to be missing")
+	}
+}

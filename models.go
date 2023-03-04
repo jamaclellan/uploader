@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"uploader/internal/http_responses"
+	"uploader/internal/responses"
 )
 
 type UploadResponseBody struct {
@@ -15,7 +15,7 @@ type UploadResponseBody struct {
 }
 
 type UploadResponse struct {
-	http_responses.ResponseHeader
+	responses.ResponseHeader
 	Results UploadResponseBody `json:"results"`
 }
 

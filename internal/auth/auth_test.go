@@ -41,6 +41,11 @@ func TestBearerAuth(t *testing.T) {
 			username: "",
 			status:   401,
 		},
+		"blank token": {
+			auth:     "",
+			username: "",
+			status:   401,
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

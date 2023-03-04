@@ -3,6 +3,7 @@ package uploader
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -13,7 +14,7 @@ import (
 	"testing"
 
 	"uploader/internal/auth"
-	"uploader/internal/http_responses"
+	"uploader/internal/responses"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -67,7 +68,7 @@ func uploadRequest(t testing.TB, token string) *http.Request {
 		t.Fatalf("failed to create upload body: %s", err)
 	}
 
-	request := httptest.NewRequest("POST", "/files", body)
+	request := httptest.NewRequest("POST", "/uploads/test_user", body)
 	request.Header.Set("Content-Type", contentType)
 	request.Header.Set(auth.HTTPHeaderName, fmt.Sprintf("Bearer %s", token))
 	return request
@@ -127,6 +128,65 @@ func TestFileGetHTTP(t *testing.T) {
 	}
 }
 
+func TestFileDeleteHTTP(t *testing.T) {
+	fileKey := "1"
+	contents := "Hello, World!"
+
+	t.Run("delete method", func(t *testing.T) {
+		meta := newTestMeta()
+		user, err := meta.UserRegister("test_user")
+		if err != nil {
+			t.Fatalf("unexpected error registering test user %s", err)
+		}
+		meta.addFile(fileKey, "text/plain")
+		store := newMemoryFileStore()
+		store.Put(fileKey, strings.NewReader(contents))
+
+		uploader := NewUploaderHTTP("http://localhost/", meta, store)
+
+		request := httptest.NewRequest(http.MethodDelete, "http://localhost/uploads/test_user/1", nil)
+		request.Header.Set(auth.HTTPHeaderName, fmt.Sprintf("Bearer %s", user.AuthToken))
+		response := httptest.NewRecorder()
+
+		uploader.ServeHTTP(response, request)
+
+		assertStatusCode(t, response, 200)
+		assertJSONResponse(t, response)
+
+		if _, err = store.Get(fileKey); !errors.Is(err, os.ErrNotExist) {
+			t.Error("expected file to be removed from file store")
+		}
+		if _, err = meta.FileGet(fileKey); !errors.Is(err, ErrNotFound) {
+			t.Error("expected file to be removed from meta store")
+		}
+	})
+
+	t.Run("public delete", func(t *testing.T) {
+		meta := newTestMeta()
+		meta.addFile(fileKey, "text/plain")
+		store := newMemoryFileStore()
+		store.Put(fileKey, strings.NewReader(contents))
+
+		uploader := NewUploaderHTTP("http://localhost/", meta, store)
+
+		// Test files have a fixed delete key of "delete"
+		request := httptest.NewRequest(http.MethodGet, "http://localhost/uploads/test_user/1/delete/delete", nil)
+		response := httptest.NewRecorder()
+
+		uploader.ServeHTTP(response, request)
+
+		assertStatusCode(t, response, 200)
+		assertJSONResponse(t, response)
+
+		if _, err := store.Get(fileKey); !errors.Is(err, os.ErrNotExist) {
+			t.Error("expected file to be removed from file store")
+		}
+		if _, err := meta.FileGet(fileKey); !errors.Is(err, ErrNotFound) {
+			t.Error("expected file to be removed from meta store")
+		}
+	})
+}
+
 func decodeUploadResponse(response *httptest.ResponseRecorder) (*UploadResponse, error) {
 	uploadResponse := &UploadResponse{}
 	if err := json.Unmarshal(response.Body.Bytes(), uploadResponse); err != nil {
@@ -135,7 +195,7 @@ func decodeUploadResponse(response *httptest.ResponseRecorder) (*UploadResponse,
 	return uploadResponse, nil
 }
 
-func assertJSONNoErrors(t testing.TB, header http_responses.ResponseHeader) {
+func assertJSONNoErrors(t testing.TB, header responses.ResponseHeader) {
 	t.Helper()
 	if header.Ok != true {
 		t.Error("expected okay status in response header")

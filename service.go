@@ -2,6 +2,7 @@ package uploader
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"net/http"
@@ -12,7 +13,8 @@ type UploadService interface {
 	Close() error
 	Upload(r io.ReadSeekCloser, name string, size int64, user string) (*UploadDetails, error)
 	Get(key string) (*UploadDetails, io.ReadCloser, error)
-	Delete(key, deleteKey string) error
+	Delete(key string) error
+	DeletePublic(key, deleteKey string) error
 }
 
 type KeyMeta interface {
@@ -87,7 +89,7 @@ func contentTypeFromFile(file io.ReadSeeker) string {
 
 func (u *uploadService) Get(key string) (*UploadDetails, io.ReadCloser, error) {
 	meta, err := u.meta.FileGet(key)
-	if errors.Is(err, notFoundError) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil, os.ErrNotExist
 	}
 	file, err := u.store.Get(key)
@@ -97,8 +99,25 @@ func (u *uploadService) Get(key string) (*UploadDetails, io.ReadCloser, error) {
 	return meta, file, nil
 }
 
-func (u *uploadService) Delete(key, deleteKey string) error {
-	return nil
+func (u *uploadService) Delete(key string) error {
+	if err := u.meta.FileDelete(key); err != nil {
+		return err
+	}
+	return u.store.Delete(key)
+}
+
+func (u *uploadService) DeletePublic(key, deleteKey string) error {
+	entry, err := u.meta.FileGet(key)
+	if err != nil {
+		return err
+	}
+	if subtle.ConstantTimeCompare([]byte(deleteKey), []byte(entry.DeleteKey)) != 1 {
+		return errors.New("unauthorized")
+	}
+	if err = u.meta.FileDelete(key); err != nil {
+		return err
+	}
+	return u.store.Delete(key)
 }
 
 func (u *uploadService) Close() error {

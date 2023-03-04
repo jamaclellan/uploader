@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"uploader/internal/http_responses"
+	"uploader/internal/responses"
 )
 
 type authCtxKey int
@@ -28,10 +28,10 @@ type Store interface {
 
 func BearerAuth(m Store) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		resp := &http_responses.BaseResponse{Results: nil}
+		resp := &responses.BaseResponse{Results: nil}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authFail := func() {
-				http_responses.Error(w, resp, http.StatusUnauthorized, CodeAuthFailed, "Access token is missing or invalid")
+				responses.Error(w, resp, http.StatusUnauthorized, CodeAuthFailed, "Access token is missing or invalid")
 			}
 			token := r.Header.Get(HTTPHeaderName)
 			if token == "" {

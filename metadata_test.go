@@ -44,6 +44,61 @@ func TestBoltStore_FileDelete(t *testing.T) {
 	}
 }
 
+func TestBoltStore_FileKey(t *testing.T) {
+	meta := newTestBolt(t)
+	defer meta.Close()
+	key, err := meta.FileKey()
+	if err != nil {
+		t.Fatalf("unexpected error on generating file key %s", err)
+	}
+	if key == "" {
+		t.Errorf("expected file key to not be blank")
+	}
+	// TODO: Ensure file key is unique somehow by forcing a duplicate.
+}
+
+func TestBoltStore_DeleteKey(t *testing.T) {
+	meta := newTestBolt(t)
+	defer meta.Close()
+	key, err := meta.DeleteKey()
+	if err != nil {
+		t.Fatalf("unexpected error on generating delete key %s", err)
+	}
+	if key == "" {
+		t.Errorf("expected delete key to not be blank")
+	}
+}
+
+func TestBoltStore_FilePut(t *testing.T) {
+	meta := newTestBolt(t)
+	defer meta.Close()
+	t.Run("normal case", func(t *testing.T) {
+		err := meta.FilePut(UploadDetails{
+			Key: "abc",
+		})
+		if err != nil {
+			t.Errorf("unexpected error on putting file details into store %s", err)
+		}
+	})
+	t.Run("duplicate replaces", func(t *testing.T) {
+		err := meta.FilePut(UploadDetails{Key: "123", Size: 15})
+		if err != nil {
+			t.Fatalf("unexpected error on putting file details into store %s", err)
+		}
+		err = meta.FilePut(UploadDetails{Key: "123", Size: 31})
+		if err != nil {
+			t.Fatalf("unexpected error on putting file second time into store %s", err)
+		}
+		details, err := meta.FileGet("123")
+		if err != nil {
+			t.Fatalf("unexpected errer on getting file from store %s", err)
+		}
+		if details.Size != 31 {
+			t.Errorf("expected size %d, got %d", 31, details.Size)
+		}
+	})
+}
+
 func newTestBolt(t testing.TB) *BoltStore {
 	f, err := os.CreateTemp(t.TempDir(), "testdb-")
 	if err != nil {

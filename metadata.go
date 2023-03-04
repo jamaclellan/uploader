@@ -39,9 +39,9 @@ const (
 )
 
 var (
-	bucketList     = []string{bucketAuth, bucketUsers, bucketUserUploads, bucketUpload}
-	duplicateError = errors.New("duplicate key")
-	notFoundError  = errors.New("key not found")
+	bucketList   = []string{bucketAuth, bucketUsers, bucketUserUploads, bucketUpload}
+	ErrDuplicate = errors.New("duplicate key")
+	ErrNotFound  = errors.New("key not found")
 )
 
 func NewBoltStore(path string) (*BoltStore, error) {
@@ -80,7 +80,7 @@ func (b *BoltStore) FileKey() (string, error) {
 			b := tx.Bucket([]byte(bucketUpload))
 			result := b.Get([]byte(key))
 			if result != nil {
-				return duplicateError
+				return ErrDuplicate
 			}
 			return b.Put([]byte(key), []byte{})
 		})
@@ -112,7 +112,7 @@ func (b *BoltStore) getJson(bucket, key string, target any) error {
 		b := tx.Bucket([]byte(bucket))
 		v := b.Get([]byte(key))
 		if v == nil {
-			return notFoundError
+			return ErrNotFound
 		}
 		return json.Unmarshal(v, target)
 	})
@@ -133,7 +133,7 @@ func (b *BoltStore) putJsonNoDupe(bucket, key string, value any) error {
 	return b.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if v := b.Get([]byte(key)); v != nil {
-			return duplicateError
+			return ErrDuplicate
 		}
 		uploadValue, err := json.Marshal(value)
 		if err != nil {

@@ -65,7 +65,7 @@ func (s *testMeta) FileGet(key string) (*UploadDetails, error) {
 	s.getCalls = append(s.getCalls, key)
 	entry, found := s.files[key]
 	if !found {
-		return nil, notFoundError
+		return nil, ErrNotFound
 	}
 	return entry, nil
 }
