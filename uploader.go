@@ -1,6 +1,8 @@
 package uploader
 
 import (
+	"bytes"
+	"errors"
 	"io"
 	"net/http"
 
@@ -33,32 +35,89 @@ func (u *Uploader) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, response, http.StatusAccepted)
 }
 
+func contentTypeFromFile(file io.ReadSeeker) string {
+	// Content detection
+	start := &bytes.Buffer{}
+	io.CopyN(start, file, 512)
+	contentType := http.DetectContentType(start.Bytes())
+
+	// Rewind file so that full file is copied later.
+	file.Seek(0, 0)
+
+	return contentType
+}
+
 func (u *Uploader) HandleUpload(file io.ReadSeekCloser, fileName string, fileSize int64, user string) (*UploadDetails, error) {
-	fileKey := u.Meta.FileKey()
-	deleteKey := u.Meta.DeleteKey()
-	if err := u.Meta.FilePut(fileKey, deleteKey, fileName, fileSize, user); err != nil {
+	fileKey, err := u.Meta.FileKey()
+	if err != nil {
+		return nil, err
+	}
+	deleteKey, err := u.Meta.DeleteKey()
+	if err != nil {
+		return nil, err
+	}
+
+	details := UploadDetails{
+		Key:         fileKey,
+		DeleteKey:   deleteKey,
+		Filename:    fileName,
+		Size:        fileSize,
+		ContentType: contentTypeFromFile(file),
+		User:        user,
+	}
+	if err := u.Meta.FilePut(details); err != nil {
 		return nil, err
 	}
 	if err := u.Store.Put(fileKey, file); err != nil {
 		return nil, err
 	}
 	return &UploadDetails{
-		fileKey:   fileKey,
-		deleteKey: deleteKey,
-		name:      fileName,
-		size:      fileSize,
-		user:      user,
+		Key:       fileKey,
+		DeleteKey: deleteKey,
+		Filename:  fileName,
+		Size:      fileSize,
+		User:      user,
 	}, nil
+}
+
+func (u *Uploader) fileGet(w http.ResponseWriter, r *http.Request) {
+	response := &BaseResponse{}
+	key := chi.URLParam(r, "key")
+	//name := chi.URLParam(r, "name")
+
+	meta, err := u.Meta.FileGet(key)
+	if errors.Is(err, notFoundError) {
+		errorResponse(w, response, 404, -1004, "file not found")
+		return
+	} else if err != nil {
+		errorResponseFromError(w, response, err)
+		return
+	}
+	w.Header().Set("Content-Type", meta.ContentType)
+	file, err := u.Store.Get(key)
+	if errors.Is(err, notFoundError) {
+		errorResponse(w, response, 404, -1004, "file not found")
+		return
+	} else if err != nil {
+		errorResponseFromError(w, response, err)
+		return
+	}
+	defer file.Close()
+	if _, err := io.Copy(w, file); err != nil {
+		// Will this work? Haven't we already written too much?
+		errorResponse(w, response, 500, -5000, "unknown error")
+		return
+	}
 }
 
 func NewUploader(base string, meta MetaStore, store FileStore) *Uploader {
 	u := &Uploader{baseURL: base, Meta: meta, Store: store}
 	router := chi.NewRouter()
 	//router.Use(middleware.Logger)
-	// router.Get("/blobs/{key}", u.blobGet)
+	router.Get("/files/{key}", u.fileGet)
 	// This intentionally has a slash after it, as blobs can be fetched with a fake filename to force an attachment.
-	//router.Get("/blobs/{key}/", u.blobGet)
-	router.With(BearerAuth(u.Meta)).Post("/blobs", u.uploadHandler)
+	router.Get("/files/{key}/{name}", u.fileGet)
+	router.With(BearerAuth(u.Meta)).Post("/files", u.uploadHandler)
 	// Authenticated get uploads for user
 	//router.Get("/uploads/{user}", u.listHandler)
 	//router.Delete("/uploads/{user}/{key}", u.deleteHandler)

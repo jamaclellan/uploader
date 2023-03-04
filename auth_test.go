@@ -1,6 +1,7 @@
 package uploader
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,19 +25,16 @@ type authTest struct {
 }
 
 func TestBearerAuth(t *testing.T) {
-	spy := &SpyMeta{
-		users: map[string]string{
-			"12345": "test_user",
-		},
-	}
+	spy := NewSpyMeta()
+	valid, _ := spy.UserRegister("test_user")
 	tests := map[string]authTest{
 		"valid case": {
-			auth:     "Bearer 12345",
+			auth:     fmt.Sprintf("Bearer %s", valid.AuthToken),
 			username: "test_user",
 			status:   200,
 		},
 		"unknown token": {
-			auth:     "Bearer 54321",
+			auth:     "Bearer abc",
 			username: "",
 			status:   401,
 		},

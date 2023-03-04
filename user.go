@@ -1,7 +1,6 @@
 package uploader
 
 type User struct {
-	Name           string
-	AuthKey        string
-	AllowedDomains []string
+	Name      string `json:"name"`
+	AuthToken string `json:"token"`
 }

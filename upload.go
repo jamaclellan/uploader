@@ -24,19 +24,20 @@ func (u *UploadResponse) FromDetails(details *UploadDetails) {
 }
 
 type UploadDetails struct {
-	fileKey   string
-	deleteKey string
-	name      string
-	size      int64
-	user      string
+	Key         string `json:"key"`
+	DeleteKey   string `json:"delete"`
+	Filename    string `json:"name"`
+	Size        int64  `json:"size"`
+	ContentType string `json:"type"`
+	User        string `json:"user"`
 
 	url       string
 	deleteUrl string
 }
 
 func (u *UploadDetails) BuildUrl(base string) {
-	target, _ := url.JoinPath(base, fmt.Sprintf("/blobs/%s/%s", u.fileKey, u.name))
+	target, _ := url.JoinPath(base, fmt.Sprintf("/files/%s", u.Key))
 	u.url = target
-	target, _ = url.JoinPath(base, fmt.Sprintf("/uploads/%s/%s/%s", u.user, u.fileKey, u.deleteKey))
+	target, _ = url.JoinPath(base, fmt.Sprintf("/uploads/%s/%s/%s", u.User, u.Key, u.DeleteKey))
 	u.deleteUrl = target
 }

@@ -10,32 +10,77 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
-func TestUploaderUploadFileFull(t *testing.T) {
-	meta := &SpyMeta{
-		users: map[string]string{
-			"12345": "test_user",
-		},
+func TestUploaderIntegrationUpload(t *testing.T) {
+	tempdir := t.TempDir()
+	tempfile, err := os.CreateTemp(tempdir, "db")
+	if err != nil {
+		t.Fatal("failed to create temp db file")
 	}
-	store := &SpyStore{}
-	uploader := NewUploader("http://localhost/", meta, store)
+	tempfile.Close()
+	os.Remove(tempfile.Name())
+	meta, err := NewBoltStore(tempfile.Name())
+	if err != nil {
+		t.Fatalf("recieved error creating meta store %s", err)
+	}
+	defer meta.Close()
+	store := NewDirectoryFileStore(tempdir)
 
+	uploader := NewUploader("http://localhost/", meta, store)
+	user, err := meta.UserRegister("test_user")
+	if err != nil {
+		t.Fatalf("failed to register test user")
+	}
+
+	request := uploadRequest(t, user.AuthToken)
+	response := httptest.NewRecorder()
+
+	uploader.ServeHTTP(response, request)
+
+	assertStatusCode(t, response, http.StatusAccepted)
+	assertJSONResponse(t, response)
+	decoded, err := decodeUploadResponse(response)
+	if err != nil {
+		t.Fatalf("failed to decode response %s", err)
+	}
+	assertJSONNoErrors(t, decoded.ResponseHeader)
+}
+
+func assertStatusCode(t testing.TB, response *httptest.ResponseRecorder, status int) {
+	t.Helper()
+	if response.Code != status {
+		t.Errorf("wrong status code, got %d want %d", response.Code, status)
+	}
+}
+
+func uploadRequest(t testing.TB, token string) *http.Request {
+	t.Helper()
 	contentType, body, err := uploadFile("./test/data/test_file.txt", "file")
 	if err != nil {
 		t.Fatalf("failed to create upload body: %s", err)
 	}
 
-	request := httptest.NewRequest("POST", "/blobs", body)
+	request := httptest.NewRequest("POST", "/files", body)
 	request.Header.Set("Content-Type", contentType)
-	request.Header.Set(AuthHeader, "Bearer 12345")
+	request.Header.Set(AuthHeader, fmt.Sprintf("Bearer %s", token))
+	return request
+}
+
+func TestUploaderUploadFileFull(t *testing.T) {
+	meta := NewSpyMeta()
+	valid, _ := meta.UserRegister("test_user")
+	store := &SpyStore{}
+	uploader := NewUploader("http://localhost/", meta, store)
+
+	request := uploadRequest(t, valid.AuthToken)
 	response := httptest.NewRecorder()
 
 	uploader.ServeHTTP(response, request)
 
-	if response.Code != http.StatusAccepted {
-		t.Errorf("wrong status code, got %d want %d", response.Code, http.StatusAccepted)
-	}
+	assertStatusCode(t, response, http.StatusAccepted)
 	assertJSONResponse(t, response)
 	decoded, err := decodeUploadResponse(response)
 	if err != nil {
@@ -43,16 +88,18 @@ func TestUploaderUploadFileFull(t *testing.T) {
 	}
 	assertJSONNoErrors(t, decoded.ResponseHeader)
 	result := decoded.Results
-	if result.URL == "" {
-		t.Errorf("no url returned")
+	want := "http://localhost/files/1"
+	if result.URL != want {
+		t.Errorf("incorrect file url returned, got %s want %s", result.URL, want)
 	}
-	if result.DeleteURL == "" {
-		t.Errorf("no delete url returned what is 1 ")
+	want = "http://localhost/uploads/test_user/1/delete"
+	if result.DeleteURL != want {
+		t.Errorf("incorrect delete url returned, got %s want %s", result.DeleteURL, want)
 	}
 }
 
 func TestHandleUpload(t *testing.T) {
-	meta := &SpyMeta{}
+	meta := NewSpyMeta()
 	store := &SpyStore{}
 	uploader := NewUploader("http://localhost/", meta, store)
 
@@ -76,8 +123,31 @@ func TestHandleUpload(t *testing.T) {
 	if len(store.putCalls) != 1 {
 		t.Errorf("unexpected number of calls for putting file in store, expected %d got %d", 1, len(store.putCalls))
 	}
-	if result.fileKey != "1" {
-		t.Errorf("expected file key of 1, got %s", result.fileKey)
+	if result.Key != "1" {
+		t.Errorf("expected file key of 1, got %s", result.Key)
+	}
+}
+
+func TestGetFile(t *testing.T) {
+	meta := NewSpyMeta()
+	meta.addFile("1", "text/plain")
+	store := &SpyStore{}
+	uploader := NewUploader("http://localhost/", meta, store)
+
+	request := httptest.NewRequest(http.MethodGet, "/files/1", nil)
+	response := httptest.NewRecorder()
+
+	uploader.ServeHTTP(response, request)
+
+	assertStatusCode(t, response, http.StatusOK)
+	if diff := cmp.Diff(meta.getCalls, []string{"1"}); diff != "" {
+		t.Errorf("expected meta get calls to match. %s", diff)
+	}
+	if diff := cmp.Diff(store.getCalls, []string{"1"}); diff != "" {
+		t.Errorf("expected store get calls to match. %s", diff)
+	}
+	if diff := cmp.Diff(response.Body.Bytes(), []byte("Hello, World!")); diff != "" {
+		t.Errorf("response body did not return expected result. %s", diff)
 	}
 }
 
