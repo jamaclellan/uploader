@@ -24,8 +24,28 @@ func TestBoltStore_UserRegistration(t *testing.T) {
 	}
 }
 
+func TestBoltStore_FileDelete(t *testing.T) {
+	meta := newTestBolt(t)
+	defer meta.Close()
+	err := meta.FilePut(UploadDetails{
+		Key:         "abc",
+		DeleteKey:   "delete",
+		Filename:    "test_filename.txt",
+		Size:        123,
+		ContentType: "test/plain",
+		User:        "test_user",
+	})
+	if err != nil {
+		t.Fatalf("failed creating store file: %s", err)
+	}
+	err = meta.FileDelete("abc")
+	if err != nil {
+		t.Errorf("unexpected error removing file meta: %s", err)
+	}
+}
+
 func newTestBolt(t testing.TB) *BoltStore {
-	f, err := os.CreateTemp("", "testdb-")
+	f, err := os.CreateTemp(t.TempDir(), "testdb-")
 	if err != nil {
 		t.Fatalf("failed to create test db file %s", err)
 	}

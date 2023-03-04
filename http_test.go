@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"uploader/internal/auth"
@@ -105,12 +106,17 @@ func TestUploaderUploadFileHTTP(t *testing.T) {
 }
 
 func TestFileGetHTTP(t *testing.T) {
+	fileKey := "1"
+	contents := "Hello, World!"
+
 	meta := newTestMeta()
-	meta.addFile("1", "text/plain")
+	meta.addFile(fileKey, "text/plain")
 	store := newMemoryFileStore()
+	store.Put(fileKey, strings.NewReader(contents))
+
 	uploader := NewUploaderHTTP("http://localhost/", meta, store)
 
-	request := httptest.NewRequest(http.MethodGet, "/files/1", nil)
+	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/files/%s", fileKey), nil)
 	response := httptest.NewRecorder()
 
 	uploader.ServeHTTP(response, request)

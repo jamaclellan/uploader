@@ -2,6 +2,7 @@ package uploader
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ type UploadService interface {
 	Close() error
 	Upload(r io.ReadSeekCloser, name string, size int64, user string) (*UploadDetails, error)
 	Get(key string) (*UploadDetails, io.ReadCloser, error)
+	Delete(key, deleteKey string) error
 }
 
 type KeyMeta interface {
@@ -19,9 +21,11 @@ type KeyMeta interface {
 }
 
 type UploadMeta interface {
-	Close() error
 	KeyMeta
+	Close() error
 	FilePut(details UploadDetails) error
+	FileGet(key string) (*UploadDetails, error)
+	FileDelete(key string) error
 }
 
 type uploadService struct {
@@ -82,7 +86,19 @@ func contentTypeFromFile(file io.ReadSeeker) string {
 }
 
 func (u *uploadService) Get(key string) (*UploadDetails, io.ReadCloser, error) {
-	return nil, nil, os.ErrNotExist
+	meta, err := u.meta.FileGet(key)
+	if errors.Is(err, notFoundError) {
+		return nil, nil, os.ErrNotExist
+	}
+	file, err := u.store.Get(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	return meta, file, nil
+}
+
+func (u *uploadService) Delete(key, deleteKey string) error {
+	return nil
 }
 
 func (u *uploadService) Close() error {

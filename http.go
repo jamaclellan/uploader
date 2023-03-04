@@ -16,6 +16,7 @@ import (
 type Uploader struct {
 	http.Handler
 	baseURL string
+	Auth    auth.Store
 	us      UploadService
 }
 
@@ -67,7 +68,7 @@ func (u *Uploader) fileGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func NewUploaderHTTP(base string, meta MetaStore, store FileStore) *Uploader {
-	u := &Uploader{baseURL: base, us: NewUploadService(meta, store)}
+	u := &Uploader{baseURL: base, us: NewUploadService(meta, store), Auth: meta}
 	router := chi.NewRouter()
 	//router.Use(middleware.Logger)
 	router.Get("/files/{key}", u.fileGet)

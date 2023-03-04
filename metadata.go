@@ -152,6 +152,10 @@ func (b *BoltStore) FileGet(key string) (*UploadDetails, error) {
 	return upload, b.getJson(bucketUpload, key, upload)
 }
 
+func (b *BoltStore) FileDelete(key string) error {
+	return nil
+}
+
 func (b *BoltStore) UserByAuthToken(token string) (*auth.User, error) {
 	user := &auth.User{}
 	err := b.getJson(bucketAuth, token, user)

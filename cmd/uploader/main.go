@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -37,6 +38,7 @@ func runServer(cfg *uploader.Config) {
 		ReadHeaderTimeout: 30 * time.Second,
 		IdleTimeout:       30 * time.Second,
 		Handler:           up,
+		Addr:              fmt.Sprintf("%s:%d", *host, *port),
 	}
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("error during runtime of server: %q", err)
@@ -66,7 +68,7 @@ func uploaderFromCfg(cfg *uploader.Config) *uploader.Uploader {
 func registerUser(cfg *uploader.Config, name string) {
 	up := uploaderFromCfg(cfg)
 	defer up.Close()
-	user, err := up.Meta.UserRegister(name)
+	user, err := up.Auth.UserRegister(name)
 	if err != nil {
 		log.Fatalf("Failed to register user: %s", err)
 	}

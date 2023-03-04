@@ -70,6 +70,11 @@ func (s *testMeta) FileGet(key string) (*UploadDetails, error) {
 	return entry, nil
 }
 
+func (s *testMeta) FileDelete(key string) error {
+	delete(s.files, key)
+	return nil
+}
+
 type memFile struct {
 	*bytes.Buffer
 }
@@ -99,6 +104,11 @@ func (m *memoryFileStore) Put(key string, r io.Reader) error {
 		return err
 	}
 	m.files[key] = f
+	return nil
+}
+
+func (m *memoryFileStore) Delete(key string) error {
+	delete(m.files, key)
 	return nil
 }
 

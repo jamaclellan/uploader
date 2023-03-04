@@ -10,6 +10,7 @@ type FileStore interface {
 	Close() error
 	Put(key string, file io.Reader) error
 	Get(key string) (io.ReadCloser, error)
+	Delete(key string) error
 }
 
 type DirectoryFileStore struct {
@@ -34,6 +35,10 @@ func (d *DirectoryFileStore) Put(key string, r io.Reader) error {
 
 func (d *DirectoryFileStore) Get(key string) (io.ReadCloser, error) {
 	return os.Open(path.Join(d.prefix, key))
+}
+
+func (d *DirectoryFileStore) Delete(key string) error {
+	return os.Remove(path.Join(d.prefix, key))
 }
 
 func (d *DirectoryFileStore) Close() error {
