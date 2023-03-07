@@ -101,7 +101,7 @@ func rand64b() (string, error) {
 	target := make([]byte, 8)
 	for i := 0; i < 32; i++ {
 		if _, err := rand.Read(target); err == nil {
-			return base64.URLEncoding.EncodeToString(target), nil
+			return base64.RawURLEncoding.EncodeToString(target), nil
 		}
 	}
 	return "", errors.New("failed to generate random key")
@@ -111,7 +111,7 @@ func randSecKey() (string, error) {
 	target := make([]byte, 32)
 	for i := 0; i < 32; i++ {
 		if _, err := rand.Read(target); err == nil {
-			return base64.URLEncoding.EncodeToString(target), nil
+			return base64.RawURLEncoding.EncodeToString(target), nil
 		}
 	}
 	return "", errors.New("failed to generate random key")
